@@ -1,0 +1,5 @@
+# Reviews are requested automatically from these teams.
+* @MosqAI/core
+
+# AI integration is co-owned with the AI team
+/src/ai/ @MosqAI/core @MosqAI/ai

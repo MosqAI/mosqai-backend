@@ -6,7 +6,7 @@ devices, ingests device telemetry over MQTT, sends commands and records their
 computes analytics and alerts, and serves the mobile app and authority web over
 REST and WebSockets.
 
-Owners: both developers. See the
+Owner: `@MosqAI/core` team (RavynX0, Hope664). The `ai` module is co-owned with `@MosqAI/ai`. See the
 [architecture](https://github.com/MosqAI/mosqai-docs/blob/develop/architecture.md).
 
 ## Technology
