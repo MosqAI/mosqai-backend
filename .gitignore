@@ -4,6 +4,8 @@ dist/
 build/
 coverage/
 *.log
+# Development email outbox (contains temporary passwords)
+.outbox/
 npm-debug.log*
 .DS_Store
 .vscode/*
@@ -19,3 +21,6 @@ npm-debug.log*
 *.crt
 *.p12
 secrets/
+
+/src/generated/
+*.tsbuildinfo
