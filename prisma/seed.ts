@@ -122,7 +122,11 @@ async function main() {
   await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
 
-  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+  // A deployed database must not use the password published in the READMEs.
+  const password = process.env.SEED_PASSWORD ?? DEV_PASSWORD;
+  if (process.env.NODE_ENV === 'production' && password === DEV_PASSWORD)
+    throw new Error('Set SEED_PASSWORD when seeding a production database');
+  const passwordHash = await bcrypt.hash(password, 10);
   const staff: [
     string,
     string,
