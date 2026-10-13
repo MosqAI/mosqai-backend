@@ -25,7 +25,7 @@ if (users > 0) {
 } else {
   console.log('seed-if-empty: empty database, loading demo data');
   // The seed refuses NODE_ENV=production because it wipes data; the table is empty here.
-  const run = spawnSync('pnpm', ['exec', 'tsx', 'prisma/seed.ts'], {
+  const run = spawnSync('npx', ['tsx', 'prisma/seed.ts'], {
     stdio: 'inherit',
     shell: true,
     env: { ...process.env, NODE_ENV: 'development' },

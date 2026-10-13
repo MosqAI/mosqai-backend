@@ -8,9 +8,9 @@ services:
     region: frankfurt
     # Switch to develop once the backend-foundation PR is merged
     branch: feature/backend-foundation
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build
+    buildCommand: npm install -g pnpm@12.6.0     buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build pnpm install --frozen-lockfile --prod=false     buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build pnpm exec prisma generate     buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build pnpm build
     # Free instances have no pre-deploy step, so migrations run at start (they are idempotent).
-    startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main
+    startCommand: npx prisma migrate deploy     startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main    startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main node scripts/seed-if-empty.mjs     startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main    startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main node dist/main
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
