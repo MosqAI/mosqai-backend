@@ -42,6 +42,15 @@ const captureSchema = z.object({
     .max(50),
 });
 
+export type RecordedCapture = {
+  capturedAt: Date;
+  storageKey: string;
+  model: string;
+  detections?: z.infer<typeof captureSchema>['detections'];
+  mosquitoCount?: number;
+  aiLogId?: bigint;
+};
+
 const SPECIES_COLUMN = {
   ANOPHELES: 'anopheles',
   CULEX: 'culex',
@@ -168,24 +177,42 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
       this.log.warn(`Capture from unknown device ${deviceId}`);
       return;
     }
-    const capturedAt = new Date(c.ts);
+    await this.recordCapture(deviceId, {
+      capturedAt: new Date(c.ts),
+      storageKey: c.image_key ?? `pending/${deviceId}/${c.ts}.jpg`,
+      model: c.model,
+      detections: c.detections,
+    });
+  }
+
+  /**
+   * Stores one analysed image and adds it to the device's daily rollup.
+   * Count-only models (the AI service today) pass mosquitoCount and no detections;
+   * those go to the unidentified column: counted in totals, never shown as a species.
+   */
+  async recordCapture(deviceId: string, capture: RecordedCapture) {
+    const { capturedAt, detections = [], mosquitoCount } = capture;
     const { date, hour } = kigaliDayHour(capturedAt);
-    const counts = { anopheles: 0, culex: 0, aedes: 0, other: 0 };
-    for (const d of c.detections) counts[SPECIES_COLUMN[d.species]]++;
+    const counts = { anopheles: 0, culex: 0, aedes: 0, other: 0, unidentified: 0 };
+    for (const d of detections) counts[SPECIES_COLUMN[d.species]]++;
+    const total = detections.length || (mosquitoCount ?? 0);
+    if (!detections.length) counts.unidentified = total;
     const hourly = Array<number>(24).fill(0);
-    hourly[hour] = c.detections.length;
+    hourly[hour] = total;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.image.create({
         data: {
           deviceId,
           capturedAt,
-          storageKey: c.image_key ?? `pending/${deviceId}/${c.ts}.jpg`,
+          storageKey: capture.storageKey,
+          aiLogId: capture.aiLogId,
           aiResults: {
             create: {
-              modelVersion: c.model,
+              modelVersion: capture.model,
+              mosquitoCount: mosquitoCount ?? null,
               detections: {
-                create: c.detections.map((d) => ({ species: d.species, confidence: d.confidence, bbox: d.bbox ?? [] })),
+                create: detections.map((d) => ({ species: d.species, confidence: d.confidence, bbox: d.bbox ?? [] })),
               },
             },
           },
@@ -196,7 +223,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
         await tx.captureDay.create({ data: { deviceId, date, reported: true, ...counts, hourly } });
       } else {
         const merged = day.hourly.length === 24 ? [...day.hourly] : Array<number>(24).fill(0);
-        merged[hour] += c.detections.length;
+        merged[hour] += total;
         await tx.captureDay.update({
           where: { deviceId_date: { deviceId, date } },
           data: {
@@ -205,6 +232,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
             culex: { increment: counts.culex },
             aedes: { increment: counts.aedes },
             other: { increment: counts.other },
+            unidentified: { increment: counts.unidentified },
             hourly: merged,
           },
         });
@@ -238,7 +266,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
       now.getTime() - this.env.DEVICE_HEARTBEAT_TIMEOUT_S * 1000,
     );
     const stale = await this.prisma.device.findMany({
-      where: { status: { not: 'OFFLINE' }, lastSeenAt: { lt: cutoff } },
+      where: { status: { not: 'OFFLINE' }, lastSeenAt: { lt: cutoff }, cameraId: null },
       select: { id: true },
     });
     // A heartbeat may be received but still queued for the database: trust receive time too.
@@ -250,7 +278,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
     return ids;
   }
 
-  private async markOffline(ids: string[], reason: string) {
+  async markOffline(ids: string[], reason: string) {
     const devices = await this.prisma.device.findMany({
       where: { id: { in: ids }, status: { not: 'OFFLINE' } },
       include: { area: true },
@@ -277,7 +305,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
     this.log.log(`Marked offline: ${devices.map((d) => d.id).join(', ')}`);
   }
 
-  private async raiseBackOnline(deviceId: string) {
+  async raiseBackOnline(deviceId: string) {
     const device = await this.prisma.device.findUniqueOrThrow({
       where: { id: deviceId },
       include: { area: true },

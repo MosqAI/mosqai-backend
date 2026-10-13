@@ -1,4 +1,5 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
+import { AiImportModule } from './ai-import/ai-import.service.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -47,6 +48,7 @@ export class AppModule {
         DirectoryModule,
         OwnerModule,
         SchedulesModule,
+        AiImportModule,
       ],
     };
   }

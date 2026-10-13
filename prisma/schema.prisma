@@ -141,6 +141,10 @@ model Device {
    * Per-device MQTT credential (hash only).
    */
   credentialHash    String?
+  /**
+   * trap_id the camera uses with the AI service (e.g. "TRAP-PROTOTYPE-01"), when it differs from the device id.
+   */
+  cameraId          String?      @unique
 
   // Last state the device itself confirmed (state topic or command ack).
   /**
@@ -266,6 +270,10 @@ model Image {
    * Object-storage key of the original image, which is never modified.
    */
   storageKey String
+  /**
+   * Row id in the AI service's trap_analytics_log, so each AI result is imported once.
+   */
+  aiLogId    BigInt?  @unique
   createdAt  DateTime @default(now())
 
   aiResults AiResult[]
@@ -279,6 +287,10 @@ model AiResult {
   imageId      String
   image        Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
   modelVersion String
+  /**
+   * Mosquitoes counted by a count-only model, which reports no per-detection species.
+   */
+  mosquitoCount Int?
   createdAt    DateTime @default(now())
 
   detections AiDetection[]
@@ -313,6 +325,8 @@ model CaptureDay {
   culex     Int      @default(0)
   aedes     Int      @default(0)
   other     Int      @default(0)
+  /// Mosquitoes counted by a count-only model, species not identified. Included in totals.
+  unidentified Int   @default(0)
   /**
    * 24 capture counts by local (Africa/Kigali) hour.
    */

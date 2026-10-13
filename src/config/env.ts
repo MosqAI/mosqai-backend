@@ -37,6 +37,18 @@ const envSchema = z.object({
   WEB_APP_URL: z.url().default('http://localhost:3100'),
   DEVICE_HEARTBEAT_TIMEOUT_S: z.coerce.number().int().positive().default(90),
   COMMAND_ACK_TIMEOUT_S: z.coerce.number().int().positive().default(30),
+
+  /** AI service results (Supabase trap_analytics_log). Empty disables the import. */
+  SUPABASE_URL: z.string().default(''),
+  /** Server-side Supabase secret / service_role key. Never send it to a browser. */
+  SUPABASE_SECRET_KEY: z.string().default(''),
+  AI_IMPORT_INTERVAL_S: z.coerce.number().int().positive().default(60),
+  /** Model name recorded with imported results (the AI log doesn't store it). */
+  AI_MODEL_VERSION: z.string().default('mosqai-v1'),
+  /** Camera traps report a frame about hourly; they count as offline after this long without one. */
+  CAMERA_OFFLINE_AFTER_S: z.coerce.number().int().positive().default(2 * 3600 + 15 * 60),
+  /** Cloudinary account holding the trap photos; used to build image links. */
+  CLOUDINARY_CLOUD_NAME: z.string().default(''),
 });
 
 /** Durations are parsed to seconds. */

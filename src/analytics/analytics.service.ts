@@ -71,11 +71,13 @@ export class AnalyticsService {
           continue;
         }
         const bySpecies = zeroSpecies();
+        let unidentified = 0;
         for (const r of reported) {
           bySpecies.ANOPHELES += r!.anopheles;
           bySpecies.CULEX += r!.culex;
           bySpecies.AEDES += r!.aedes;
           bySpecies.OTHER += r!.other;
+          unidentified += r!.unidentified;
         }
         out.push({
           area: area.name,
@@ -84,7 +86,8 @@ export class AnalyticsService {
             bySpecies.ANOPHELES +
             bySpecies.CULEX +
             bySpecies.AEDES +
-            bySpecies.OTHER,
+            bySpecies.OTHER +
+            unidentified,
           bySpecies,
           reportingDevices: reported.length,
           totalDevices: area.devices.length,
@@ -185,7 +188,7 @@ export class AnalyticsService {
     const mosquitoes = (current: boolean) =>
       rows
         .filter((r) => inWeek(r.date) === current && r.reported)
-        .reduce((a, r) => a + r.anopheles + r.culex + r.aedes + r.other, 0);
+        .reduce((a, r) => a + r.anopheles + r.culex + r.aedes + r.other + r.unidentified, 0);
     const traps = devices.filter((d) => d.type !== 'WEATHER_SENSOR').length || 1;
     const uptime = (current: boolean) =>
       (rows.filter((r) => inWeek(r.date) === current && r.reported).length / (traps * 7)) * 100;

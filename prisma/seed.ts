@@ -188,6 +188,8 @@ async function main() {
         // The owner account holds the first two devices (for the mobile app).
         ownerId: i < 2 ? owner.id : null,
         nickname: i < 2 ? `Device ${i + 1}` : null,
+        // MSQ-001 is the prototype ESP32-CAM; its frames arrive through the AI service import.
+        cameraId: i === 0 ? (process.env.SEED_CAMERA_ID ?? 'TRAP-PROTOTYPE-01') : null,
         placement: i < 2 ? ['Living Room', 'Bedroom'][i] : null,
         // Unowned devices can be paired with code PAIR-<number>, e.g. PAIR-026.
         pairingCodeHash:

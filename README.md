@@ -69,6 +69,23 @@ DRAFT**. The backend subscribes to `status`, `heartbeat`, `state` and
 - Not yet built: per-device MQTT credentials and ACLs, image upload, AI dispatch,
   the capture rollup job (the seed writes `capture_days` directly), WebSockets.
 
+## Camera traps and the AI service (Phase A)
+
+Phase A traps are an ESP32-CAM only: it posts a frame to `mosqai-ai` about every
+hour and has no MQTT link. The AI service logs every frame to Supabase
+(`trap_analytics_log`), and `src/ai-import` polls that log every
+`AI_IMPORT_INTERVAL_S`:
+
+- A device is linked to a camera by `cameraId` (the camera's `trap_id`). The seed
+  links MSQ-001 to `TRAP-PROTOTYPE-01`.
+- Frames keep the device ONLINE; none for `CAMERA_OFFLINE_AFTER_S` marks it OFFLINE.
+  The MQTT heartbeat sweep skips camera-linked devices.
+- Frames with new mosquitoes become captures. The model counts but doesn't identify
+  species, so the count goes to `capture_days.unidentified`: part of every total,
+  never shown as a species. Photos link to Cloudinary (`CLOUDINARY_CLOUD_NAME`).
+- Remote control (power, fan, UV, schedules) needs a controller board that Phase A
+  doesn't have; the apps show those features as under development.
+
 ## Environment variables
 
 See [`.env.example`](.env.example). Never commit `.env`.
@@ -90,8 +107,10 @@ afterwards.
 
 ## Deployment
 
-Docker image built by CI and deployed via `mosqai-infrastructure`. Migrations run
-as a separate release step (`prisma migrate deploy`).
+[`render.yaml`](render.yaml) deploys the API to Render (free plan) from a Blueprint.
+The database is Postgres on Supabase: use the **Session pooler** connection string
+with `?schema=backend` appended, so our tables stay out of Supabase's API-exposed
+`public` schema. Migrations run at start (`prisma migrate deploy`).
 
 ## Contribution workflow
 

@@ -132,7 +132,7 @@ export class DevicesService {
     });
     return days.map((d) => ({
       at: d.date,
-      captures: d.anopheles + d.culex + d.aedes + d.other,
+      captures: d.anopheles + d.culex + d.aedes + d.other + d.unidentified,
     }));
   }
 }

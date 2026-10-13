@@ -1,0 +1,40 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# Values marked sync: false are asked for once when the Blueprint is created.
+services:
+  - type: web
+    name: mosqai-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    # Switch to develop once the backend-foundation PR is merged
+    branch: feature/backend-foundation
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm build
+    # Free instances have no pre-deploy step, so migrations run at start (they are idempotent).
+    startCommand: pnpm exec prisma migrate deploy && node dist/main
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.20.0
+      # Supabase -> Connect -> Session pooler URI (Render has no IPv6), ending in ?schema=backend
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      # Comma-separated: the authority web and the mobile web app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WEB_APP_URL
+        sync: false
+      # Phase A traps have no MQTT controller; leave empty
+      - key: MQTT_URL
+        value: ""
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false

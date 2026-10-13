@@ -1,6 +1,7 @@
 // Endpoints for device owners (the mobile app): overview, species report,
 // captures with AI results, pairing and naming their devices.
 import {
+  Inject,
   BadRequestException,
   Body,
   Controller,
@@ -19,6 +20,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { ZodPipe } from '../common/zod.pipe.js';
+import { ENV, type Env } from '../config/env.js';
 import type { Species } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.module.js';
 import { publicDevice } from '../devices/devices.module.js';
@@ -54,7 +56,17 @@ const renameSchema = z.object({
 
 @Injectable()
 export class OwnerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
+
+  /** Public link for a stored photo, or null while the image has no reachable storage. */
+  private imageUrl(storageKey: string) {
+    const cloud = this.env.CLOUDINARY_CLOUD_NAME;
+    if (!cloud || !storageKey.startsWith('cloudinary:')) return null;
+    return `https://res.cloudinary.com/${cloud}/image/upload/${storageKey.slice('cloudinary:'.length)}`;
+  }
 
   private ownedDevices(user: AuthUser) {
     return this.prisma.device.findMany({
@@ -97,7 +109,7 @@ export class OwnerService {
         .filter((r) => r.date >= from && r.date < to)
         .reduce((a, r) => a + pick(r), 0);
     const total = (r: (typeof rollups)[number]) =>
-      r.anopheles + r.culex + r.aedes + r.other;
+      r.anopheles + r.culex + r.aedes + r.other + r.unidentified;
     const highRisk = (r: (typeof rollups)[number]) => r.anopheles + r.aedes;
     const change = (now: number, before: number) =>
       before ? now / before - 1 : null;
@@ -212,6 +224,8 @@ export class OwnerService {
         risk: top ? SPECIES_RISK[top.species] : null,
         confidence: top?.confidence ?? null,
         detections: img.aiResults[0]?.detections.length ?? null,
+        // Count-only models report a total but no per-detection species
+        mosquitoes: img.aiResults[0] ? img.aiResults[0].detections.length || (img.aiResults[0].mosquitoCount ?? 0) : null,
       };
     });
   }
@@ -238,8 +252,7 @@ export class OwnerService {
       id: img.id,
       capturedAt: img.capturedAt,
       device: publicDevice(img.device, user),
-      // Images are served through short-lived signed URLs once storage exists (M2).
-      imageUrl: null,
+      imageUrl: this.imageUrl(img.storageKey),
       analysis: result
         ? {
             modelVersion: result.modelVersion,
@@ -247,6 +260,7 @@ export class OwnerService {
             species: detections[0]?.species ?? null,
             risk: detections[0] ? SPECIES_RISK[detections[0].species] : null,
             confidence: detections[0]?.confidence ?? null,
+            mosquitoes: detections.length || (result.mosquitoCount ?? 0),
             detections: detections.map((d) => ({
               species: d.species,
               confidence: d.confidence,
