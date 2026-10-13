@@ -8,9 +8,9 @@ services:
     region: frankfurt
     # Switch to develop once the backend-foundation PR is merged
     branch: feature/backend-foundation
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm build
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm exec prisma generate && pnpm build
     # Free instances have no pre-deploy step, so migrations run at start (they are idempotent).
-    startCommand: pnpm exec prisma migrate deploy && node dist/main
+    startCommand: pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && node dist/main
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -37,4 +37,7 @@ services:
       - key: SUPABASE_SECRET_KEY
         sync: false
       - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      # Demo account password for the first-boot seed (scripts/seed-if-empty.mjs)
+      - key: SEED_PASSWORD
         sync: false
