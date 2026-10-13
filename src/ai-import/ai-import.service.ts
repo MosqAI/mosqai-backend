@@ -159,10 +159,12 @@ export class AiImportService implements OnModuleInit, OnModuleDestroy {
     const cutoff = now.getTime() - this.env.CAMERA_OFFLINE_AFTER_S * 1000;
     const stale: string[] = [];
     for (const cam of cameras) {
+      // The camera's own frames are the truth for when it was last seen; rows arrive
+      // in order, so the newest imported frame always wins over any stored value.
       const frame = lastFrame.get(cam.id);
-      const seen = frame && (!cam.lastSeenAt || frame > cam.lastSeenAt) ? frame : cam.lastSeenAt;
+      const seen = frame ?? cam.lastSeenAt;
       const fresh = seen !== null && seen.getTime() >= cutoff;
-      if (frame && seen === frame) {
+      if (frame) {
         await this.prisma.device.update({
           where: { id: cam.id },
           data: { lastSeenAt: frame, ...(fresh && { status: 'ONLINE' }) },
