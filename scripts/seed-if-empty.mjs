@@ -1,4 +1,4 @@
-// First boot of a fresh deployment: load the demo data when the database has no
+// First boot of a fresh deployment (or RESEED_DEMO=1): load the demo data when the database has no
 // users yet. Runs inside the host's private network, so the database never has to
 // accept outside connections. Needs SEED_PASSWORD (the README's dev password is public).
 import { spawnSync } from 'node:child_process';
@@ -18,12 +18,15 @@ try {
   await client.end();
 }
 
-if (users > 0) {
+// RESEED_DEMO=1 reloads the demo data once (the seed wipes the tables first). Remove it afterwards.
+const reseed = process.env.RESEED_DEMO === '1';
+
+if (users > 0 && !reseed) {
   console.log(`seed-if-empty: ${users} users found, skipping`);
 } else if (!process.env.SEED_PASSWORD) {
   console.log('seed-if-empty: database is empty but SEED_PASSWORD is not set, skipping');
 } else {
-  console.log('seed-if-empty: empty database, loading demo data');
+  console.log(reseed ? 'seed-if-empty: RESEED_DEMO=1, reloading demo data' : 'seed-if-empty: empty database, loading demo data');
   // The seed refuses NODE_ENV=production because it wipes data; the table is empty here.
   const run = spawnSync('npx', ['tsx', 'prisma/seed.ts'], {
     stdio: 'inherit',
