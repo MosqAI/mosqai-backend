@@ -1,0 +1,412 @@
+// MosqAI Shield data model. See mosqai-docs/architecture.md for the rules this
+// encodes: the backend is the source of truth, device state is only what the
+// device confirmed, and "no data" is never stored as zero.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---- People -----------------------------------------------------------------
+
+enum Role {
+  OWNER
+  AUTHORITY_VIEWER
+  AUTHORITY_ADMIN
+  ADMIN
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  phone        String?
+  /**
+   * UI language for the apps, e.g. "en", "rw", "fr".
+   */
+  language     String    @default("en")
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  /// Set for accounts created or reset by an admin: the temporary password must be replaced at first sign-in.
+  mustChangePassword Boolean @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  ownedDevices  Device[]
+  refreshTokens RefreshToken[]
+  commands      DeviceCommand[]
+  auditEntries  AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---- Places and devices -----------------------------------------------------
+
+enum RiskLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Area {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  /**
+   * Monitoring site name, e.g. "Kicukiro".
+   */
+  site     String
+  district String
+  lat      Float
+  lng      Float
+  risk     RiskLevel @default(LOW)
+
+  devices Device[]
+  alerts  Alert[]
+
+  @@map("areas")
+}
+
+enum DeviceType {
+  MOSQUITO_TRAP
+  CAMERA_TRAP
+  WEATHER_SENSOR
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  WARNING
+}
+
+enum ControlMode {
+  MANUAL
+  AUTOMATIC
+}
+
+model Device {
+  /**
+   * Public device id, e.g. MSQ-001. Also the MQTT topic segment.
+   */
+  id                String       @id
+  type              DeviceType
+  areaId            String
+  area              Area         @relation(fields: [areaId], references: [id])
+  sector            String
+  lat               Float
+  lng               Float
+  /**
+   * Owner identities are never exposed to authority users.
+   */
+  ownerId           String?
+  owner             User?        @relation(fields: [ownerId], references: [id])
+  status            DeviceStatus @default(OFFLINE)
+  /**
+   * null = unknown (not reporting), never 0.
+   */
+  batteryPct        Int?
+  lastSeenAt        DateTime?
+  installedAt       DateTime     @default(now())
+  nextMaintenanceAt DateTime?
+  firmware          String?
+  /**
+   * Owner-chosen name and placement, e.g. "Device 1" / "Living Room".
+   */
+  nickname          String?
+  placement         String?
+  /**
+   * Hash of the pairing code printed on the device; cleared once claimed.
+   */
+  pairingCodeHash   String?
+  /**
+   * Per-device MQTT credential (hash only).
+   */
+  credentialHash    String?
+  /**
+   * trap_id the camera uses with the AI service (e.g. "TRAP-PROTOTYPE-01"), when it differs from the device id.
+   */
+  cameraId          String?      @unique
+
+  // Last state the device itself confirmed (state topic or command ack).
+  /**
+   * /** Master power (fan + UV together), as the device last confirmed it.
+   */
+  powerOn        Boolean?
+  mode           ControlMode?
+  fanOn          Boolean?
+  uvOn           Boolean?
+  co2On          Boolean?
+  /// CO2 lure remaining, 0-100, as last reported. null = unknown, never 0.
+  co2LevelPct    Int?
+  cameraStatus   String?
+  stateUpdatedAt DateTime?
+
+  heartbeats  Heartbeat[]
+  commands    DeviceCommand[]
+  schedules   DeviceSchedule[]
+  images      Image[]
+  captureDays CaptureDay[]
+  alerts      Alert[]
+
+  @@index([areaId])
+  @@index([ownerId])
+  @@map("devices")
+}
+
+model Heartbeat {
+  id        BigInt       @id @default(autoincrement())
+  deviceId  String
+  device    Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ts        DateTime
+  firmware  String?
+  uptimeS   Int?
+  rssi      Int?
+  tempC     Float?
+  voltageV  Float?
+  currentA  Float?
+  mode      ControlMode?
+  createdAt DateTime     @default(now())
+
+  @@index([deviceId, ts])
+  @@map("heartbeats")
+}
+
+// ---- Commands (only successful when the device confirms) --------------------
+
+enum CommandStatus {
+  PENDING
+  SENT
+  CONFIRMED
+  FAILED
+  REJECTED
+  TIMED_OUT
+}
+
+model DeviceCommand {
+  /**
+   * Also the MQTT command_id, so device-side retries are idempotent.
+   */
+  id          String        @id @default(uuid())
+  deviceId    String
+  device      Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type        String
+  params      Json          @default("{}")
+  status      CommandStatus @default(PENDING)
+  issuedById  String?
+  issuedBy    User?         @relation(fields: [issuedById], references: [id])
+  issuedAt    DateTime      @default(now())
+  expiresAt   DateTime
+  sentAt      DateTime?
+  ackAt       DateTime?
+  actualState Json?
+  error       String?
+
+  @@index([deviceId, issuedAt])
+  @@index([status])
+  @@map("device_commands")
+}
+
+// ---- Schedules (run on the device in AUTOMATIC mode, so they work offline) ---
+
+enum ScheduleAction {
+  ON
+  OFF
+}
+
+model DeviceSchedule {
+  id        String         @id @default(uuid())
+  deviceId  String
+  device    Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  action    ScheduleAction
+  /**
+   * Local time in Africa/Kigali, "HH:MM".
+   */
+  time      String
+  /**
+   * Weekdays 0 (Sunday) to 6; empty means every day.
+   */
+  days      Int[]
+  enabled   Boolean        @default(true)
+  createdAt DateTime       @default(now())
+
+  @@index([deviceId])
+  @@map("device_schedules")
+}
+
+// ---- Images and AI ----------------------------------------------------------
+
+enum Species {
+  ANOPHELES
+  CULEX
+  AEDES
+  OTHER
+}
+
+model Image {
+  id         String   @id @default(uuid())
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  capturedAt DateTime
+  /**
+   * Object-storage key of the original image, which is never modified.
+   */
+  storageKey String
+  /**
+   * Row id in the AI service's trap_analytics_log, so each AI result is imported once.
+   */
+  aiLogId    BigInt?  @unique
+  createdAt  DateTime @default(now())
+
+  aiResults AiResult[]
+
+  @@index([deviceId, capturedAt])
+  @@map("images")
+}
+
+model AiResult {
+  id           String   @id @default(uuid())
+  imageId      String
+  image        Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  modelVersion String
+  /**
+   * Mosquitoes counted by a count-only model, which reports no per-detection species.
+   */
+  mosquitoCount Int?
+  createdAt    DateTime @default(now())
+
+  detections AiDetection[]
+
+  @@index([imageId])
+  @@map("ai_results")
+}
+
+model AiDetection {
+  id         String   @id @default(uuid())
+  aiResultId String
+  aiResult   AiResult @relation(fields: [aiResultId], references: [id], onDelete: Cascade)
+  species    Species
+  confidence Float
+  /**
+   * [x, y, width, height] in image pixels.
+   */
+  bbox       Json
+
+  @@index([aiResultId])
+  @@map("ai_detections")
+}
+
+/// Daily rollup per device, written by the analytics aggregation job.
+/// reported = false means NO_DATA for that day; the counts are then meaningless.
+model CaptureDay {
+  deviceId  String
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  reported  Boolean
+  anopheles Int      @default(0)
+  culex     Int      @default(0)
+  aedes     Int      @default(0)
+  other     Int      @default(0)
+  /// Mosquitoes counted by a count-only model, species not identified. Included in totals.
+  unidentified Int   @default(0)
+  /**
+   * 24 capture counts by local (Africa/Kigali) hour.
+   */
+  hourly    Int[]
+
+  @@id([deviceId, date])
+  @@index([date])
+  @@map("capture_days")
+}
+
+// ---- Alerts, reports, audit -------------------------------------------------
+
+enum AlertKind {
+  ACTIVITY
+  DEVICE_OFFLINE
+  RISK_AREA
+  DEVICE_ONLINE
+}
+
+enum AlertSeverity {
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+model Alert {
+  id             String        @id @default(uuid())
+  kind           AlertKind
+  severity       AlertSeverity
+  title          String
+  location       String
+  message        String
+  deviceId       String?
+  device         Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  areaId         String?
+  area           Area?         @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  dismissedAt    DateTime?
+
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+enum ReportType {
+  MOSQUITO_ACTIVITY
+  RISK_ASSESSMENT
+  CAPTURE
+  SYSTEM_PERFORMANCE
+}
+
+enum ReportStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  type        ReportType
+  periodStart DateTime     @db.Date
+  periodEnd   DateTime     @db.Date
+  areas       Int
+  status      ReportStatus @default(PROCESSING)
+  createdAt   DateTime     @default(now())
+
+  @@map("reports")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  target    String
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_log")
+}
